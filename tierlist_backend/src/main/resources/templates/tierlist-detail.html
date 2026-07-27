@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${tierlist.name}">Тирлист</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        a { color: #1890ff; text-decoration: none; }
+        .btn { display: inline-block; padding: 10px 20px; background: #1890ff;
+               color: white; border-radius: 4px; text-decoration: none; }
+        .btn:hover { background: #40a9ff; }
+    </style>
+</head>
+<body>
+<h1 th:text="${tierlist.name}">Название тирлиста</h1>
+
+<h3>Подключённые пулы</h3>
+<ul>
+    <li th:each="poolName : ${poolNames}" th:text="${poolName}"></li>
+</ul>
+
+<p>
+    <a class="btn" th:href="@{/tierlist/{id}/edit(id=${tierlist.id})}">Редактировать тирлист</a>
+</p>
+
+<p><a href="/home">← На главную</a></p>
+</body>
+</html>

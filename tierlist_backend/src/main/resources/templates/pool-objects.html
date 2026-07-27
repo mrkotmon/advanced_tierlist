@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Объекты пула</title>
+</head>
+<body>
+<h1 th:text="'Объекты пула: ' + ${poolName}"></h1>
+<a th:href="@{/pools/{id}/add-object(id=${poolId})}">Добавить объект</a>
+<table border="1" style="margin-top: 20px;">
+    <tr><th>ID</th><th>Изображение</th><th>Имя</th><th>Атрибуты</th></tr>
+    <tr th:each="obj : ${objects}">
+        <td th:text="${obj.id}"></td>
+        <td>
+            <img th:if="${obj.image != null}" th:src="@{/uploads/{img}(img=${obj.image})}" width="80">
+            <span th:unless="${obj.image != null}">нет</span>
+        </td>
+        <td th:text="${obj.name}"></td>
+        <td th:text="${obj.attributes}"></td>
+    </tr>
+</table>
+<a href="/pools">← К списку пулов</a>
+</body>
+</html>

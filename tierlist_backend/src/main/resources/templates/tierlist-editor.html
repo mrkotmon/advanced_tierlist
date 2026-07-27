@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title th:text="'Редактор: ' + ${tierlistName}">Редактор</title>
+    <style>
+        .tier-column { display: inline-block; vertical-align: top; margin: 10px;
+                       padding: 10px; border: 1px solid #ccc; min-width: 150px; }
+        .object-card { border: 1px solid #ddd; padding: 5px; margin: 5px; background: #f9f9f9; }
+        .unassigned { margin: 20px 0; }
+    </style>
+</head>
+<body>
+<h1 th:text="${tierlistName}">Редактор</h1>
+
+<div>
+    <label>Показывать атрибут:</label>
+    <select id="displayAttrSelect" onchange="updateDisplayAttribute()">
+        <option value="">-- Не показывать --</option>
+        <option th:each="attr : ${availableAttributes}"
+                th:value="${attr}" th:text="${attr}"
+                th:selected="${attr == displayAttribute}"></option>
+    </select>
+</div>
+
+<!-- Контейнер тиров -->
+<div id="tiers-container">
+    <div th:each="tierEntry : ${tiers}" class="tier-column">
+        <h3 th:text="${tierEntry.key}"></h3>
+        <div class="tier-objects">
+            <div th:each="obj : ${tierEntry.value}" class="object-card">
+                <img th:if="${obj.image}" th:src="@{/uploads/{img}(img=${obj.image})}" width="50">
+                <span th:text="${obj.name}"></span>
+                <!-- оверлей с атрибутом добавим позже -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<button onclick="addTier()">Добавить тир</button>
+
+<div class="unassigned">
+    <h2>Нераспределённые</h2>
+    <div id="unassigned-objects">
+        <div th:each="obj : ${unassigned}" class="object-card">
+            <!-- аналогичное отображение -->
+        </div>
+    </div>
+</div>
+
+<script>
+    const tierlistId = /*[[${tierlistId}]]*/ 0;
+</script>
+<script th:inline="javascript">
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Мои тирлисты</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        a { color: #1890ff; text-decoration: none; }
+        ul { list-style: none; padding: 0; }
+        li { margin: 10px 0; }
+    </style>
+</head>
+<body>
+<h1>Список тирлистов</h1>
+<div th:if="${#lists.isEmpty(tierlists)}">
+    <p>У вас пока нет ни одного тирлиста.</p>
+</div>
+<ul th:unless="${#lists.isEmpty(tierlists)}">
+    <li th:each="tl : ${tierlists}">
+        <a th:href="@{/tierlist/{id}(id=${tl.id})}" th:text="${tl.name}">Название</a>
+    </li>
+</ul>
+<p><a href="/home">← На главную</a></p>
+</body>
+</html>

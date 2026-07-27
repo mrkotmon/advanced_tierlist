@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>Добавить объект</title>
+</head>
+<body>
+<h1>Добавить объект в пул <span th:if="${poolName}" th:text="${poolName}"></span></h1>
+<form method="post" th:action="@{/pools/{id}/add-object(id=${poolId})}" enctype="multipart/form-data">
+    <div>
+        <label>Имя объекта:</label>
+        <input type="text" name="name" required>
+    </div>
+    <div>
+        <label>Изображение:</label>
+        <input type="file" name="imageFile" accept="image/*">
+    </div>
+    <fieldset>
+        <legend>Атрибуты (ключ=значение)</legend>
+        <div id="attrs">
+            <div class="attr-row">
+                <input type="text" name="attrKey" placeholder="ключ">
+                <input type="text" name="attrValue" placeholder="значение">
+            </div>
+        </div>
+        <button type="button" onclick="addAttr()">+ Добавить атрибут</button>
+    </fieldset>
+    <button type="submit">Сохранить</button>
+</form>
+<a th:href="@{/pools/{id}/objects(id=${poolId})}">← Назад</a>
+
+
+
+<script>
+    function addAttr() {
+        const div = document.getElementById('attrs');
+        div.insertAdjacentHTML('beforeend',
+            `<div class="attr-row">
+                <input type="text" name="attrKey" placeholder="ключ">
+                <input type="text" name="attrValue" placeholder="значение">
+            </div>`);
+    }
+</script>
+</body>
+</html>
