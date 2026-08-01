@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tier tool — rank anything, together</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root{
+          --bg:#F5F7F9;
+          --surface:#FFFFFF;
+          --ink:#14161A;
+          --ink-2:#5A6472;
+          --line:#E3E8ED;
+
+          --hi-yellow:#FFE96B;
+          --hi-green:#CBF08E;
+
+          --tier-s:#FF9B9B;
+          --tier-a:#FFDE6B;
+          --tier-b:#CBF08E;
+          --tier-c:#8FD8F0;
+
+          --display:"Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+          --body:"Inter", ui-sans-serif, system-ui, sans-serif;
+
+          --r:12px;
+          --shell:1160px;
+          --pad:32px;
+        }
+
+        *{box-sizing:border-box}
+        html{scroll-behavior:smooth}
+        body{
+          margin:0;
+          background:var(--bg);
+          color:var(--ink);
+          font-family:var(--body);
+          font-size:16px;
+          line-height:1.6;
+          -webkit-font-smoothing:antialiased;
+        }
+        h1,h2,h3{font-family:var(--display);font-weight:700;line-height:1.1;letter-spacing:-.02em;margin:0}
+        p{margin:0}
+        a{color:inherit}
+
+        .shell{max-width:var(--shell);margin:0 auto;padding:0 var(--pad)}
+
+        .header{
+          position:sticky;top:0;z-index:50;
+          background:rgba(255,255,255,.88);
+          backdrop-filter:blur(10px);
+          border-bottom:1px solid var(--line);
+        }
+        .header__in{
+          height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px;
+        }
+        .logo{display:flex;gap:6px;font-family:var(--display);font-weight:600;font-size:21px;letter-spacing:-.01em;text-decoration:none}
+        .logo span{padding:1px 7px 2px;border-radius:3px}
+        .logo span:first-child{background:var(--hi-yellow)}
+        .logo span:last-child{background:var(--hi-green)}
+
+        .nav{display:flex;gap:28px;font-size:15px;color:var(--ink-2)}
+        .nav a{text-decoration:none;transition:color .15s}
+        .nav a:hover{color:var(--ink)}
+
+        .header__actions{display:flex;align-items:center;gap:8px}
+
+        .btn{
+          font-family:var(--body);font-size:15px;font-weight:500;
+          padding:9px 18px;border-radius:8px;border:1px solid transparent;
+          text-decoration:none;cursor:pointer;display:inline-block;
+          transition:transform .12s ease, background .15s ease, border-color .15s ease;
+        }
+        .btn:active{transform:translateY(1px)}
+        .btn--ghost{color:var(--ink-2)}
+        .btn--ghost:hover{color:var(--ink);background:rgba(20,22,26,.05)}
+        .btn--solid{background:var(--ink);color:#fff}
+        .btn--solid:hover{background:#2A2E36}
+        .btn--lg{font-size:17px;padding:14px 26px;border-radius:10px}
+        .btn--outline{border-color:var(--line);background:var(--surface)}
+        .btn--outline:hover{border-color:var(--ink-2)}
+
+        .hero{padding:88px 0 96px}
+        .hero__grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+        .eyebrow{
+          display:inline-block;font-family:var(--display);font-size:13px;font-weight:600;
+          letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);
+          margin-bottom:20px;
+        }
+        .hero h1{font-size:clamp(38px,4.4vw,58px)}
+        .hero h1 mark{background:var(--hi-yellow);padding:0 .12em;border-radius:3px;color:inherit}
+        .hero__sub{margin-top:22px;font-size:18px;color:var(--ink-2);max-width:44ch}
+        .hero__cta{margin-top:34px;display:flex;gap:12px;flex-wrap:wrap}
+        .hero__note{margin-top:16px;font-size:14px;color:var(--ink-2)}
+
+        .stage{position:relative}
+        .board{
+          background:var(--surface);border:1px solid var(--line);
+          border-radius:var(--r);overflow:hidden;
+          box-shadow:0 18px 40px -24px rgba(20,22,26,.22);
+        }
+        .row{display:flex;min-height:70px;border-bottom:1px solid var(--line)}
+        .row:last-child{border-bottom:0}
+        .row__label{
+          flex:0 0 70px;display:grid;place-items:center;
+          font-family:var(--display);font-size:21px;font-weight:700;color:#14161A;
+        }
+        .row--s .row__label{background:var(--tier-s)}
+        .row--a .row__label{background:var(--tier-a)}
+        .row--b .row__label{background:var(--tier-b)}
+        .row--c .row__label{background:var(--tier-c)}
+        .row__slot{
+          flex:1;display:flex;align-items:center;gap:8px;padding:8px;
+          transition:background .18s ease, box-shadow .18s ease;
+        }
+        .row__slot.is-target{
+          background:rgba(20,22,26,.04);
+          box-shadow:inset 0 0 0 2px rgba(20,22,26,.16);
+        }
+
+        .tray{
+          margin-top:14px;display:flex;gap:8px;padding:8px;
+          background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+          min-height:70px;
+        }
+        .card{
+          width:54px;height:54px;flex:0 0 54px;
+          display:grid;place-items:center;
+          background:#F1F3F6;border:1px solid var(--line);border-radius:8px;
+          font-family:var(--display);font-size:15px;font-weight:500;
+          user-select:none;text-align:center;line-height:1.1;
+        }
+        .card.is-hidden{opacity:0}
+        .card--flying{
+          position:absolute;top:0;left:0;margin:0;z-index:20;
+          background:var(--surface);box-shadow:0 14px 28px rgba(20,22,26,.2);
+          pointer-events:none;
+        }
+        @keyframes settle{0%{transform:scale(1.06)}60%{transform:scale(.97)}100%{transform:scale(1)}}
+        .card--settled{animation:settle .28s ease-out}
+
+        .cursor{
+          position:absolute;top:0;left:0;width:20px;height:20px;z-index:30;
+          pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.24));
+        }
+        .cursor__tag{
+          position:absolute;left:16px;top:16px;white-space:nowrap;
+          background:var(--ink);color:#fff;font-size:11px;font-weight:500;
+          padding:2px 7px;border-radius:5px;font-family:var(--body);
+        }
+
+        .section{padding:96px 0;border-top:1px solid var(--line)}
+        .section__head{max-width:52ch;margin-bottom:56px}
+        .section__head h2{font-size:clamp(30px,3.2vw,40px)}
+        .section__head p{margin-top:16px;font-size:17px;color:var(--ink-2)}
+
+        .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+        .step{
+          background:var(--surface);border:1px solid var(--line);
+          border-radius:var(--r);padding:28px;
+        }
+        .step__n{
+          font-family:var(--display);font-size:13px;font-weight:700;
+          color:var(--ink-2);letter-spacing:.06em;margin-bottom:18px;
+        }
+        .step h3{font-size:20px;margin-bottom:10px}
+        .step p{color:var(--ink-2);font-size:15px}
+
+        .split{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+        .feature-list{list-style:none;padding:0;margin:28px 0 0;display:grid;gap:18px}
+        .feature-list li{display:flex;gap:14px;align-items:flex-start;font-size:16px}
+        .dot{
+          flex:0 0 10px;width:10px;height:10px;border-radius:3px;margin-top:8px;
+        }
+        .dot--s{background:var(--tier-s)}
+        .dot--a{background:var(--tier-a)}
+        .dot--b{background:var(--tier-b)}
+        .feature-list strong{font-weight:600}
+        .feature-list span{color:var(--ink-2)}
+
+        .panel{
+          background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+          padding:28px;position:relative;overflow:hidden;
+        }
+        .avatars{display:flex;align-items:center;gap:-6px;margin-bottom:22px}
+        .avatar{
+          width:34px;height:34px;border-radius:50%;border:2px solid var(--surface);
+          display:grid;place-items:center;font-size:13px;font-weight:600;
+          font-family:var(--display);margin-right:-8px;
+        }
+        .avatar:nth-child(1){background:var(--tier-s)}
+        .avatar:nth-child(2){background:var(--tier-a)}
+        .avatar:nth-child(3){background:var(--tier-b)}
+        .avatar:nth-child(4){background:var(--tier-c)}
+        .avatars__label{margin-left:20px;font-size:14px;color:var(--ink-2)}
+
+        .chat{display:grid;gap:12px}
+        .bubble{
+          background:#F1F3F6;border-radius:10px;padding:10px 14px;font-size:14px;
+          max-width:82%;
+        }
+        .bubble--me{background:var(--ink);color:#fff;justify-self:end}
+        .bubble b{font-weight:600}
+
+        .cta{padding:96px 0;border-top:1px solid var(--line)}
+        .cta__box{
+          background:var(--ink);color:#fff;border-radius:20px;
+          padding:64px 48px;text-align:center;
+        }
+        .cta__box h2{font-size:clamp(30px,3.4vw,44px);color:#fff}
+        .cta__box p{margin:18px auto 0;color:rgba(255,255,255,.68);max-width:46ch;font-size:17px}
+        .cta__box .btn{margin-top:32px;background:var(--hi-yellow);color:var(--ink)}
+        .cta__box .btn:hover{background:#FFF08F}
+
+        .footer{border-top:1px solid var(--line);padding:40px 0}
+        .footer__in{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}
+        .footer small{color:var(--ink-2);font-size:14px}
+        .footer nav{display:flex;gap:22px;font-size:14px;color:var(--ink-2)}
+        .footer nav a{text-decoration:none}
+        .footer nav a:hover{color:var(--ink)}
+
+        .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease, transform .5s ease}
+        .reveal.is-in{opacity:1;transform:none}
+
+        @media (max-width:900px){
+          .hero__grid,.split{grid-template-columns:1fr;gap:44px}
+          .steps{grid-template-columns:1fr}
+          .nav{display:none}
+          .hero{padding:56px 0 64px}
+          .section,.cta{padding:64px 0}
+          .cta__box{padding:44px 24px}
+        }
+
+        @media (prefers-reduced-motion:reduce){
+          html{scroll-behavior:auto}
+          .cursor,.card--flying{display:none!important}
+          *{animation:none!important;transition:none!important}
+          .reveal{opacity:1;transform:none}
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="shell header__in">
+        <a class="logo" href="#top"><span>tier</span><span>tool</span></a>
+        <nav class="nav">
+            <a href="#how">How it works</a>
+            <a href="#together">Together</a>
+            <a href="#share">Share</a>
+        </nav>
+        <div class="header__actions">
+            <a class="btn btn--ghost" href="/login">Sign in</a>
+            <a class="btn btn--solid" href="/signup">Sign up</a>
+        </div>
+    </div>
+</header>
+
+<main id="top">
+
+    <section class="hero">
+        <div class="shell hero__grid">
+            <div>
+                <span class="eyebrow">Real-time tier lists</span>
+                <h1>Rank anything. <mark>Argue about it</mark> with friends.</h1>
+                <p class="hero__sub">Drop items into tiers, watch your friends move them right back, and settle it live. No sign-up needed to start.</p>
+                <div class="hero__cta">
+                    <a class="btn btn--solid btn--lg" href="/tierlist/new">Start a tier list</a>
+                    <a class="btn btn--outline btn--lg" href="#how">See how it works</a>
+                </div>
+                <p class="hero__note">Free to use. Invite up to 8 people per board.</p>
+            </div>
+
+            <div class="stage" id="stage">
+                <div class="board">
+                    <div class="row row--s"><div class="row__label">S</div><div class="row__slot" data-tier="S"></div></div>
+                    <div class="row row--a"><div class="row__label">A</div><div class="row__slot" data-tier="A"></div></div>
+                    <div class="row row--b"><div class="row__label">B</div><div class="row__slot" data-tier="B"></div></div>
+                    <div class="row row--c"><div class="row__label">C</div><div class="row__slot" data-tier="C"></div></div>
+                </div>
+                <div class="tray" id="tray"></div>
+                <svg class="cursor" id="cursor" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 2.5 L5 19 L9.2 15.2 L11.8 21 L14.6 19.7 L12 14 L18 13.8 Z"
+                          fill="#14161A" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <section class="section reveal" id="how">
+        <div class="shell">
+            <div class="section__head">
+                <h2>Three steps, about a minute</h2>
+                <p>Boards start empty and stay editable. Nothing is locked in until you decide it is.</p>
+            </div>
+            <div class="steps">
+                <article class="step">
+                    <div class="step__n">STEP 01</div>
+                    <h3>Add your items</h3>
+                    <p>Paste a list, upload images, or pick from a template. Movies, frameworks, pizza toppings — whatever needs settling.</p>
+                </article>
+                <article class="step">
+                    <div class="step__n">STEP 02</div>
+                    <h3>Drag them into tiers</h3>
+                    <p>Six rows by default, renameable and recolorable. Move an item as many times as you need to.</p>
+                </article>
+                <article class="step">
+                    <div class="step__n">STEP 03</div>
+                    <h3>Send the link</h3>
+                    <p>Anyone with the link joins instantly. Their changes appear on your screen as they make them.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section class="section reveal" id="together">
+        <div class="shell split">
+            <div>
+                <h2>Everyone edits at once</h2>
+                <p style="margin-top:16px;color:var(--ink-2);font-size:17px">You see their cursors. They see yours. Disagreements happen in the open instead of in a group chat.</p>
+                <ul class="feature-list">
+                    <li><span class="dot dot--s"></span><span><strong>Live cursors.</strong> Named, colored, and impossible to ignore when someone drags your S-tier pick down to C.</span></li>
+                    <li><span class="dot dot--a"></span><span><strong>Comments on items.</strong> Defend your choice in a thread instead of losing it in the chat scroll.</span></li>
+                    <li><span class="dot dot--b"></span><span><strong>Version history.</strong> Every move is saved. Roll back to any point on the board.</span></li>
+                </ul>
+            </div>
+            <div class="panel">
+                <div class="avatars">
+                    <div class="avatar">MK</div>
+                    <div class="avatar">AL</div>
+                    <div class="avatar">JD</div>
+                    <div class="avatar">+3</div>
+                    <span class="avatars__label">6 people on this board</span>
+                </div>
+                <div class="chat">
+                    <div class="bubble"><b>Alex</b> moved Blade Runner to S</div>
+                    <div class="bubble bubble--me">absolutely not</div>
+                    <div class="bubble"><b>Jamie</b> moved Blade Runner to A</div>
+                    <div class="bubble bubble--me">fine</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section reveal" id="share">
+        <div class="shell split">
+            <div class="panel">
+                <div style="display:grid;gap:10px">
+                    <div style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px">
+                        <span style="width:28px;height:28px;border-radius:6px;background:var(--tier-a)"></span>
+                        <span style="font-weight:500">PNG image</span>
+                        <span style="margin-left:auto;color:var(--ink-2);font-size:14px">Ready to post</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px">
+                        <span style="width:28px;height:28px;border-radius:6px;background:var(--tier-b)"></span>
+                        <span style="font-weight:500">Public link</span>
+                        <span style="margin-left:auto;color:var(--ink-2);font-size:14px">View or edit</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px">
+                        <span style="width:28px;height:28px;border-radius:6px;background:var(--tier-c)"></span>
+                        <span style="font-weight:500">CSV export</span>
+                        <span style="margin-left:auto;color:var(--ink-2);font-size:14px">Rankings and votes</span>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h2>Take the result anywhere</h2>
+                <p style="margin-top:16px;color:var(--ink-2);font-size:17px">Boards leave as images, links, or raw data. Post the argument, embed it, or keep the numbers.</p>
+                <p style="margin-top:18px;color:var(--ink-2);font-size:17px">Public boards get voted on by everyone else. The community ranking sits next to yours, so you can see exactly how wrong the internet thinks you are.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta">
+        <div class="shell">
+            <div class="cta__box">
+                <h2>Settle it properly</h2>
+                <p>Open a board, send the link, and let the arguing begin.</p>
+                <a class="btn btn--lg" href="/tierlist/new">Start a tier list</a>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="footer">
+    <div class="shell footer__in">
+        <a class="logo" href="#top"><span>tier</span><span>tool</span></a>
+        <nav>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Contact</a>
+        </nav>
+        <small>© 2026 tier tool</small>
+    </div>
+</footer>
+
+<script>
+    (() => {
+      const stage  = document.getElementById('stage');
+      const tray   = document.getElementById('tray');
+      const cursor = document.getElementById('cursor');
+
+      const ITEMS = [
+        { label:'Figma',  tier:'S' },
+        { label:'Notion', tier:'A' },
+        { label:'Slack',  tier:'B' },
+        { label:'Jira',   tier:'C' },
+      ];
+
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+
+      const relRect = el => {
+        const a = el.getBoundingClientRect(), b = stage.getBoundingClientRect();
+        return { x:a.left-b.left, y:a.top-b.top, w:a.width, h:a.height };
+      };
+
+      function buildTray(){
+        tray.innerHTML = '';
+        document.querySelectorAll('.row__slot').forEach(s => s.innerHTML = '');
+        return ITEMS.map(item => {
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.textContent = item.label;
+          tray.appendChild(el);
+          return { ...item, el };
+        });
+      }
+
+      function moveTo(el,x,y,ms,extra=''){
+        el.style.transition = `transform ${ms}ms cubic-bezier(.4,0,.2,1)`;
+        el.style.transform  = `translate(${x}px,${y}px) ${extra}`;
+        return wait(ms);
+      }
+      function placeAt(el,x,y,extra=''){
+        el.style.transition = 'none';
+        el.style.transform  = `translate(${x}px,${y}px) ${extra}`;
+        void el.offsetWidth;
+      }
+
+      async function dragOne(card){
+        const slot = document.querySelector(`.row__slot[data-tier="${card.tier}"]`);
+        const from = relRect(card.el);
+
+        await moveTo(cursor, from.x + from.w/2 - 4, from.y + from.h/2 - 4, 620);
+        await wait(150);
+
+        const fly = card.el.cloneNode(true);
+        fly.classList.add('card--flying');
+        stage.appendChild(fly);
+        placeAt(fly, from.x, from.y);
+        card.el.classList.add('is-hidden');
+        await moveTo(fly, from.x, from.y - 6, 140, 'scale(1.06) rotate(-2.5deg)');
+
+        const s = relRect(slot);
+        const n = slot.children.length;
+        const tx = s.x + 8 + n * (from.w + 8);
+        const ty = s.y + (s.h - from.h)/2;
+
+        slot.classList.add('is-target');
+        moveTo(cursor, tx + from.w/2 - 4, ty + from.h/2 - 4, 880);
+        await moveTo(fly, tx, ty - 6, 880, 'scale(1.06) rotate(-2.5deg)');
+        await moveTo(fly, tx, ty, 160, 'scale(1) rotate(0deg)');
+        slot.classList.remove('is-target');
+
+        const landed = card.el;
+        landed.classList.remove('is-hidden');
+        landed.classList.add('card--settled');
+        slot.appendChild(landed);
+        fly.remove();
+        setTimeout(() => landed.classList.remove('card--settled'), 320);
+
+        await wait(680);
+      }
+
+      async function loop(){
+        while(true){
+          const cards = buildTray();
+          placeAt(cursor, relRect(tray).x - 36, relRect(tray).y + 86);
+          await wait(850);
+          for(const c of cards) await dragOne(c);
+          await moveTo(cursor, relRect(tray).x - 36, relRect(tray).y + 86, 700);
+          await wait(2200);
+        }
+      }
+
+      if(reduced){
+        buildTray().forEach(c =>
+          document.querySelector(`.row__slot[data-tier="${c.tier}"]`).appendChild(c.el));
+        cursor.style.display = 'none';
+      } else {
+        loop();
+      }
+
+      if(!reduced && 'IntersectionObserver' in window){
+        const io = new IntersectionObserver(entries => {
+          entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-in'); io.unobserve(e.target); } });
+        }, { threshold:.12 });
+        document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+      } else {
+        document.querySelectorAll('.reveal').forEach(el => el.classList.add('is-in'));
+      }
+    })();
+</script>
+</body>
+</html>

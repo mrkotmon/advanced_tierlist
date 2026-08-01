@@ -26,7 +26,7 @@ public class TierListController {
 
     @GetMapping("/new")
     public String newTierListForm(HttpSession session, Model model) {
-        if (session.getAttribute("username") == null) return "redirect:/login";
+        if (session.getAttribute("username") == null) return "redirect:/login"; //ну тип пока проверяем на лог ин, потом уберу
         model.addAttribute("pools", poolService.getAllPools());
         return "new-tierlist";
     }
