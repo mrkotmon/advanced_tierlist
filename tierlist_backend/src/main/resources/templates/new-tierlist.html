@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>Новый тирлист</title>
+    <style>
+        body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .form-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 400px; }
+        h2 { margin-top: 0; }
+        input[type="text"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
+        .pool-list { max-height: 200px; overflow-y: auto; border: 1px solid #ccc; border-radius: 4px; padding: 10px; }
+        label { display: block; margin-bottom: 5px; }
+        button { width: 100%; padding: 10px; background: #1890ff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; }
+        button:hover { background: #40a9ff; }
+        a { display: block; text-align: center; margin-top: 15px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="form-box">
+    <h2>Новый тирлист</h2>
+    <form method="post" action="/tierlist/new">
+        <label>Название тирлиста:</label>
+        <input type="text" name="name" required placeholder="Введите название">
+
+        <label>Выберите пулы:</label>
+        <div class="pool-list">
+            <label th:each="pool : ${pools}">
+                <input type="checkbox" name="poolNames" th:value="${pool.name}">
+                <span th:text="${pool.name}"></span>
+            </label>
+            <div th:if="${#lists.isEmpty(pools)}">Нет доступных пулов</div>
+        </div>
+
+        <button type="submit">Создать</button>
+    </form>
+    <a href="/home">← Назад</a>
+</div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>Управление пулами</title>
+    <style>
+        body { font-family: Arial; margin: 40px; }
+        a { color: #1890ff; }
+    </style>
+</head>
+<body>
+<h1>Пулы</h1>
+<a href="/pools/new">Создать новый пул</a>
+<ul>
+    <li th:each="pool : ${pools}">
+        <strong th:text="${pool.name}"></strong>
+        <a th:href="@{/pools/{id}/objects(id=${pool.id})}">Просмотр объектов</a>
+    </li>
+</ul>
+<a href="/home">← На главную</a>
+</body>
+</html>

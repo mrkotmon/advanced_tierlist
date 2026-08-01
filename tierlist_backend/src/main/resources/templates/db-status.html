@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>Статус базы данных</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .ok { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+        table { border-collapse: collapse; margin-top: 20px; }
+        td { padding: 5px 10px; border: 1px solid #ccc; }
+        td:first-child { font-weight: bold; }
+    </style>
+</head>
+<body>
+<h1>Статус подключения к базе данных</h1>
+<div th:if="${connected}">
+    <p class="ok">Подключение успешно</p>
+    <table>
+        <tr><td>URL подключения</td><td th:text="${databaseUrl}"></td></tr>
+        <tr><td>СУБД</td><td th:text="${databaseProduct}"></td></tr>
+        <tr><td>Версия</td><td th:text="${databaseVersion}"></td></tr>
+        <tr><td>Драйвер</td><td th:text="${driverName}"></td></tr>
+        <tr><td>Пользователей в таблице users</td><td th:text="${userCount}"></td></tr>
+    </table>
+</div>
+<div th:unless="${connected}">
+    <p class="fail">Ошибка подключения</p>
+    <p th:text="${error}"></p>
+</div>
+<p><a href="/">На страницу входа</a></p>
+</body>
+</html>
