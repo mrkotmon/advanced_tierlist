@@ -1,0 +1,20 @@
+{
+    default_sni 26.66.74.232
+}
+
+https://26.66.74.232 {
+    tls internal
+
+    # Python
+    @realtime path /realtime /realtime/* /cursors.js
+    reverse_proxy @realtime python:8001
+
+    @ws path /ws/*
+    reverse_proxy @ws python:8001
+
+    @pyapi path /api/tierlists/* /api/ws-ticket
+    reverse_proxy @pyapi python:8001
+
+    # Java (catch-all)
+    reverse_proxy java:8080
+}

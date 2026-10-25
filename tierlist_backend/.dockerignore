@@ -1,0 +1,15 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.vscode/
+*.log
+logs/
+.DS_Store
+Thumbs.db
+.env
+.env.local

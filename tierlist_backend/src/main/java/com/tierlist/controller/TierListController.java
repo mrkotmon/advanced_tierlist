@@ -135,11 +135,11 @@ public class TierListController {
                 .filter(o -> !assignedIds.contains(((Number) o.get("id")).longValue()))
                 .collect(Collectors.toList());
 
-        // Доступные атрибуты (ключи из JSONB всех объектов)
         Set<String> availableAttributes = new LinkedHashSet<>();
         for (Map<String, Object> obj : allObjects) {
-            String attrsStr = (String) obj.get("attributes");
-            if (attrsStr != null) {
+            Object attrsObj = obj.get("attributes");
+            if (attrsObj != null) {
+                String attrsStr = attrsObj.toString();    // PGobject.toString() → JSON string
                 JSONObject attrs = new JSONObject(attrsStr);
                 attrs.keySet().forEach(availableAttributes::add);
             }
@@ -163,7 +163,8 @@ public class TierListController {
                                                     @RequestParam String attribute) {
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT tierlist_data FROM tierlists WHERE id = ?", id);
-        String jsonStr = (String) tierlist.get("tierlist_data");
+        Object dataObj = tierlist.get("tierlist_data");
+        String jsonStr = (dataObj != null) ? dataObj.toString() : "{}";
         JSONObject data = new JSONObject(jsonStr);
         data.put("displayAttribute", attribute.isEmpty() ? JSONObject.NULL : attribute);
         jdbcTemplate.update("UPDATE tierlists SET tierlist_data = ?::jsonb WHERE id = ?",

@@ -10,6 +10,14 @@ public class TierlistBackend {
         SpringApplication.run(TierlistBackend.class, args);
         System.out.println("http://localhost:8080/");
         System.out.println("http://localhost:8080/test");
-        Runtime.getRuntime().exec("rundll32 url.dll,FileProtocolHandler http://localhost:8080/");
+        // Открыть браузер только на Windows и только если это НЕ Docker
+        if (System.getProperty("os.name").toLowerCase().contains("win")
+                && System.getenv("DOCKER_CONTAINER") == null) {
+            try {
+                Runtime.getRuntime().exec("rundll32 url.dll,FileProtocolHandler http://localhost:8080/");
+            } catch (IOException e) {
+                System.err.println("Не удалось открыть браузер: " + e.getMessage());
+            }
+        }
     }
 }

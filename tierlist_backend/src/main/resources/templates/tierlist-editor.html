@@ -9,6 +9,7 @@
         .unassigned { margin: 20px 0; }
     </style>
 </head>
+
 <body>
 <h1 th:text="${tierlistName}">Редактор</h1>
 
@@ -47,10 +48,29 @@
     </div>
 </div>
 
-<script>
-    const tierlistId = /*[[${tierlistId}]]*/ 0;
-</script>
+<style>
+    /* ...твои существующие стили... */
+
+    /* Курсоры */
+    .remote-cursor {
+        position: fixed;            /* ← fixed, а не absolute! см. ниже */
+        pointer-events: none;
+        z-index: 9999;
+        transition: left .05s linear, top .05s linear;
+    }
+    .remote-cursor svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
+    .remote-label {
+        position: absolute; top: 22px; left: 14px;
+        background: #14161A; color: #fff;
+        font-size: 12px; padding: 2px 7px;
+        border-radius: 5px; white-space: nowrap;
+    }
+</style>
+
+<script src="/cursors.js"></script>
 <script th:inline="javascript">
+    const tierlistId = /*[[${tierlistId}]]*/ 0;
+    connectCursors(tierlistId);
 </script>
 </body>
 </html>

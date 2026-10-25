@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+      POSTGRES_DB: tierlistdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tierlistdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  java:
+    build: ./tierlist_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tierlistdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+
+  python:
+    build: ./backend-python
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-1234}@postgres:5432/tierlistdb
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      DEV_ALLOW_ANON: ${DEV_ALLOW_ANON:-true}
+    volumes:
+      - uploads:/app/uploads   # если Python читает картинки из той же папки
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - java
+      - python
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

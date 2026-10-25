@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Live Cursors + Voice + DeepFilterNet</title>
+    <style>
+        body {
+            margin: 0; height: 100vh; background: #F5F7F9;
+            font-family: Arial, sans-serif; overflow: hidden;
+            cursor: crosshair;
+        }
+        .info {
+            position: fixed; top: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); color: #fff;
+            padding: 6px 12px; border-radius: 6px;
+            font-size: 14px; z-index: 100;
+        }
+        .remote-cursor {
+            position: absolute; pointer-events: none; z-index: 50;
+            transition: left 0.05s linear, top 0.05s linear;
+        }
+        .remote-cursor svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3)); }
+        .remote-label {
+            position: absolute; top: 22px; left: 14px;
+            background: #14161A; color: #fff;
+            font-size: 12px; padding: 2px 7px;
+            border-radius: 5px; white-space: nowrap;
+        }
+
+        .voice-panel {
+            position: fixed; left: 10px; bottom: 10px;
+            background: #fff; border: 1px solid #d8dee6;
+            border-radius: 10px; padding: 10px 12px;
+            font-size: 13px; width: 290px;
+            box-shadow: 0 4px 16px rgba(0,0,0,.12);
+            z-index: 100; cursor: default;
+        }
+        .voice-panel .row { display: flex; gap: 6px; margin-bottom: 8px; }
+        .voice-panel button {
+            flex: 1; padding: 7px 8px; font-size: 13px;
+            border-radius: 7px; border: 1px solid #c9d2dd;
+            background: #f2f5f9; cursor: pointer;
+        }
+        .voice-panel button:hover:not(:disabled) { background: #e6ecf4; }
+        .voice-panel button:disabled { opacity: .45; cursor: default; }
+        .voice-panel button.primary { background: #2f80ed; border-color: #2f80ed; color: #fff; }
+        .voice-panel button.primary:hover { background: #2670d3; }
+
+        #voiceStatus { margin-bottom: 4px; color: #444; }
+        #nsStatus { font-size: 11px; color: #888; margin-bottom: 6px; }
+        #nsStatus.ok { color: #27ae60; }
+        #nsStatus.warn { color: #e67e22; }
+        .vu { height: 6px; background: #e6eaf0; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+        .vu > div { height: 100%; width: 0; background: #33c46b; transition: width .05s linear; }
+
+        #peers .peer {
+            padding: 3px 0; color: #333; display: flex;
+            justify-content: space-between; gap: 6px;
+        }
+        #peers .peer .st { color: #8a94a3; font-size: 11px; }
+        #peers .peer.connected .st { color: #27ae60; }
+        #audios { display: none; }
+    </style>
+</head>
+<body>
+    <div class="info" id="info">Подключение...</div>
+
+    <div class="voice-panel">
+        <div id="voiceStatus">Голос: выключен</div>
+        <div id="nsStatus">Шумодав: —</div>
+        <div class="vu"><div id="vuBar"></div></div>
+        <div class="row">
+            <button id="joinBtn" class="primary">🎙 Войти в голос</button>
+            <button id="leaveBtn" disabled>Выйти</button>
+        </div>
+        <div class="row">
+            <button id="muteBtn" disabled>Микрофон: вкл</button>
+        </div>
+        <div id="peers"></div>
+        <div id="audios"></div>
+    </div>
+
+<script>
+/* ======================================================================
+   0. Общие данные и вспомогательные
+   ====================================================================== */
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+const sessionId = getCookie('JSESSIONID');
+const color     = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+
+const WS_BASE = (() => {
+    const port = location.port;
+    // За Caddy: стандартный порт (443/80/пусто) → same-origin
+    if (port === '' || port === '443' || port === '80') {
+        return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+    }
+    // Прямой dev без Caddy: Python на 8001
+    return `ws://${location.hostname}:8001`;
+})();
+
+const info = document.getElementById('info');
+const vlog = (...a) => console.log('[voice]', ...a);
+
+/* ======================================================================
+   1. КУРСОРЫ
+   ====================================================================== */
+
+function updateCursor(data) {
+    let cur = cursors[data.clientId];
+    if (!cur) {
+        const el = document.createElement('div');
+        el.className = 'remote-cursor';
+        el.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24">
+                <path d="M5 2.5 L5 19 L9.2 15.2 L11.8 21 L14.6 19.7 L12 14 L18 13.8 Z"
+                      fill="${data.color || '#ff0000'}"
+                      stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/>
+            </svg>
+            <div class="remote-label" style="background:${data.color || '#ff0000'}">
+                ${data.name || data.clientId}
+            </div>`;
+        document.body.appendChild(el);
+        cur = cursors[data.clientId] = { el, last: null };
+    }
+    cur.el.style.left = data.x + 'px';
+    cur.el.style.top  = data.y + 'px';
+}
+function removeCursor(id) {
+    if (cursors[id]) { cursors[id].el.remove(); delete cursors[id]; }
+}
+
+/* ======================================================================
+   2. ГОЛОС (WebRTC mesh + DeepFilterNet3)
+   ====================================================================== */
+const ICE_SERVERS = [
+    // { urls: 'stun:stun.l.google.com:19302' } // раскомментируй для не-LAN
+];
+
+let voiceWs = null;
+let rawMicStream = null;     // сырой поток с микрофона
+let localStream = null;       // то, что уходит в WebRTC (после шумодава)
+let dfnCleanup = null;        // функция очистки AudioContext DFN
+let voiceOn = false;
+let muted = false;
+
+const pcs        = {};
+const pendingIce = {};
+const peerNames  = {};
+const audios     = {};
+
+const joinBtn  = document.getElementById('joinBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const muteBtn  = document.getElementById('muteBtn');
+const statusEl = document.getElementById('voiceStatus');
+const nsStatus = document.getElementById('nsStatus');
+const peersBox = document.getElementById('peers');
+const vuBar    = document.getElementById('vuBar');
+
+const wsUrl = `ws://${window.location.hostname}:8001/ws/cursors?client_id=${clientId}&session_id=${sessionId}`;
+
+joinBtn.onclick  = () => joinVoice();
+leaveBtn.onclick = () => leaveVoice();
+muteBtn.onclick  = () => toggleMute();
+
+/* ---------- Вход в голосовой канал ---------- */
+async function joinVoice() {
+    if (voiceOn) return;
+
+    if (!window.isSecureContext) {
+        alert('Микрофон доступен только по HTTPS или на localhost.\nОткройте страницу через https://');
+        return;
+    }
+
+    voiceOn = true;
+    muted = false;
+    updateVoiceUI();
+
+    // 1. Сырой звук с микрофона (без встроенного шумодава)
+    try {
+        rawMicStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: false,
+                autoGainControl: true
+            },
+            video: false
+        });
+    } catch (err) {
+        alert('Не удалось получить микрофон:\n' + err.message +
+              '\n\nПроверьте разрешения браузера и Windows.');
+        voiceOn = false;
+        updateVoiceUI();
+        return;
+    }
+
+    // 2. Пробуем DeepFilterNet3
+    statusEl.textContent = 'Голос: загрузка шумодава…';
+    nsStatus.textContent = 'Шумодав: загрузка…';
+    nsStatus.className = '';
+
+    const dfn = await setupDeepFilterNet(rawMicStream);
+
+    if (dfn) {
+        localStream = dfn.stream;
+        dfnCleanup = dfn.cleanup;
+        nsStatus.textContent = 'Шумодав: DeepFilterNet3 ✓';
+        nsStatus.className = 'ok';
+    } else {
+        // Fallback — пересоздаём поток со встроенным шумодавом
+        try {
+            rawMicStream.getTracks().forEach(t => t.stop());
+            rawMicStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                video: false
+            });
+            localStream = rawMicStream;
+            nsStatus.textContent = 'Шумодав: встроенный (DFN не загрузился)';
+            nsStatus.className = 'warn';
+        } catch (err) {
+            nsStatus.textContent = 'Шумодав: выключен';
+            nsStatus.className = 'warn';
+        }
+    }
+
+    startVuMeter();
+
+    // 3. Подключаемся к серверу сигналинга
+    voiceWs = new WebSocket(
+    `${WS_BASE}/ws/voice?client_id=${encodeURIComponent(sessionId)}&session_id=${encodeURIComponent(sessionId)}`
+    );
+
+    let queue = Promise.resolve();
+
+    voiceWs.onopen = () => {
+        statusEl.textContent = 'Голос: в канале';
+        updateVoiceUI();
+    };
+    voiceWs.onclose = () => {
+        if (voiceOn) {
+            statusEl.textContent = 'Голос: соединение потеряно';
+            leaveVoice();
+        }
+    };
+    voiceWs.onerror = () => vlog('voice ws error');
+    voiceWs.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        queue = queue.then(() => processVoiceMsg(msg)).catch(err => vlog('signal err', err));
+    };
+}
+
+/* ---------- DeepFilterNet3 ---------- */
+async function setupDeepFilterNet(rawStream) {
+    let audioCtx = null;
+    try {
+        audioCtx = new AudioContext({ sampleRate: 48000 });
+        await audioCtx.resume();
+
+        // Пробуем два CDN — если один заблокирован, второй сработает
+        let mod;
+        try {
+            mod = await import('https://cdn.jsdelivr.net/npm/@workadventure/noise-suppression@latest/deepfilternet/+esm');
+        } catch (e1) {
+            vlog('jsdelivr failed, trying esm.sh', e1);
+            mod = await import('https://esm.sh/@workadventure/noise-suppression/deepfilternet');
+        }
+
+        const createWorklet = mod.createDeepFilterNetAudioWorklet
+            || (mod.default && mod.default.createDeepFilterNetAudioWorklet);
+
+        if (typeof createWorklet !== 'function') {
+            throw new Error('createDeepFilterNetAudioWorklet not exported');
+        }
+
+        const source = audioCtx.createMediaStreamSource(rawStream);
+        const destination = audioCtx.createMediaStreamDestination();
+
+        let worklet;
+        try {
+            worklet = await createWorklet(audioCtx, {
+                pauseGateLookaheadFrames: 1,
+                speechAttenuationDb: 30
+            });
+        } catch (optErr) {
+            vlog('DFN options failed, using defaults', optErr);
+            worklet = await createWorklet(audioCtx);
+        }
+
+        source.connect(worklet.node).connect(destination);
+
+        if (worklet.ready && typeof worklet.ready.then === 'function') {
+            await worklet.ready;
+        }
+
+        vlog('DeepFilterNet3 ready');
+
+        return {
+            stream: destination.stream,
+            cleanup: () => {
+                try { source.disconnect(); } catch (e) {}
+                try { worklet.node.disconnect(); } catch (e) {}
+                try { audioCtx.close(); } catch (e) {}
+            }
+        };
+    } catch (err) {
+        console.error('[DFN] init failed:', err);
+        if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
+        return null;
+    }
+}
+
+/* ---------- Выход ---------- */
+function leaveVoice() {
+    if (!voiceOn) return;
+    voiceOn = false;
+
+    Object.keys(pcs).forEach(dropPeer);
+
+    if (voiceWs) {
+        voiceWs.onclose = null;
+        voiceWs.onmessage = null;
+        voiceWs.close();
+        voiceWs = null;
+    }
+    if (dfnCleanup) { try { dfnCleanup(); } catch (e) {} dfnCleanup = null; }
+    if (rawMicStream) { rawMicStream.getTracks().forEach(t => t.stop()); rawMicStream = null; }
+    if (localStream && localStream !== rawMicStream) {
+        localStream.getTracks().forEach(t => t.stop());
+    }
+    localStream = null;
+
+    stopVuMeter();
+    nsStatus.textContent = 'Шумодав: —';
+    nsStatus.className = '';
+    updateVoiceUI();
+    renderPeers();
+}
+
+function toggleMute() {
+    if (!rawMicStream) return;
+    muted = !muted;
+    rawMicStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+    updateVoiceUI();
+}
+
+function updateVoiceUI() {
+    joinBtn.disabled  = voiceOn;
+    leaveBtn.disabled = !voiceOn;
+    muteBtn.disabled  = !voiceOn;
+    muteBtn.textContent = muted ? 'Микрофон: выкл 🔇' : 'Микрофон: вкл';
+    if (!voiceOn) statusEl.textContent = 'Голос: выключен';
+}
+
+/* ---------- Сигналинг ---------- */
+function sendSignal(to, payload) {
+    if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+        voiceWs.send(JSON.stringify({ ...payload, to }));
+    }
+}
+
+async function processVoiceMsg(msg) {
+    if (msg.type === 'peers') {
+        for (const p of msg.peers) {
+            peerNames[p.clientId] = p.name;
+            const pc = createPC(p.clientId);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            sendSignal(p.clientId, { type: 'offer', sdp: pc.localDescription });
+        }
+        renderPeers();
+        return;
+    }
+    if (msg.type === 'peer-joined') {
+        peerNames[msg.clientId] = msg.name;
+        renderPeers();
+        return;
+    }
+    if (msg.type === 'peer-left') {
+        dropPeer(msg.clientId);
+        return;
+    }
+
+    const peerId = msg.from;
+    if (!peerId) return;
+    if (msg.fromName) peerNames[peerId] = msg.fromName;
+
+    if (msg.type === 'offer') {
+        const pc = pcs[peerId] || createPC(peerId);
+        await pc.setRemoteDescription(msg.sdp);
+        await flushPendingIce(peerId);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal(peerId, { type: 'answer', sdp: pc.localDescription });
+
+    } else if (msg.type === 'answer') {
+        const pc = pcs[peerId];
+        if (!pc) return;
+        await pc.setRemoteDescription(msg.sdp);
+        await flushPendingIce(peerId);
+
+    } else if (msg.type === 'ice') {
+        const pc = pcs[peerId];
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+            try { await pc.addIceCandidate(msg.candidate); }
+            catch (e) { vlog('addIceCandidate', e); }
+        } else {
+            (pendingIce[peerId] = pendingIce[peerId] || []).push(msg.candidate);
+        }
+    }
+}
+
+async function flushPendingIce(peerId) {
+    const list = pendingIce[peerId] || [];
+    pendingIce[peerId] = [];
+    const pc = pcs[peerId];
+    if (!pc) return;
+    for (const c of list) {
+        try { await pc.addIceCandidate(c); } catch (e) { vlog('flushIce', e); }
+    }
+}
+
+/* ---------- PeerConnection + битрейт 128k ---------- */
+function applyAudioBitrate(pc) {
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+    if (!sender) return;
+    try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+        params.encodings[0].maxBitrate = 128000;
+        sender.setParameters(params).catch(() => {});
+    } catch (e) { /* silent */ }
+}
+
+function createPC(peerId) {
+    if (pcs[peerId]) return pcs[peerId];
+
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    pcs[peerId] = pc;
+
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (e) => {
+        if (e.candidate) sendSignal(peerId, { type: 'ice', candidate: e.candidate });
+    };
+
+    pc.ontrack = (e) => {
+        let audio = audios[peerId];
+        if (!audio) {
+            audio = new Audio();
+            audio.autoplay = true;
+            audio.playsInline = true;
+            audios[peerId] = audio;
+            document.getElementById('audios').appendChild(audio);
+        }
+        audio.srcObject = e.streams[0];
+        audio.play().catch(err => vlog('play blocked', err));
+    };
+
+    pc.onconnectionstatechange = () => {
+        vlog(peerId, pc.connectionState);
+        if (pc.connectionState === 'connected') applyAudioBitrate(pc);
+        renderPeers();
+    };
+
+    renderPeers();
+    return pc;
+}
+
+function dropPeer(peerId) {
+    if (pcs[peerId]) { try { pcs[peerId].close(); } catch (e) {} delete pcs[peerId]; }
+    if (audios[peerId]) { audios[peerId].srcObject = null; audios[peerId].remove(); delete audios[peerId]; }
+    delete pendingIce[peerId];
+    delete peerNames[peerId];
+    renderPeers();
+}
+
+function renderPeers() {
+    peersBox.innerHTML = '';
+    const ids = new Set([...Object.keys(pcs), ...Object.keys(peerNames)]);
+    if (ids.size === 0) {
+        peersBox.innerHTML = '<div class="peer"><span>В канале пока никого</span></div>';
+        return;
+    }
+    ids.forEach(id => {
+        const pc = pcs[id];
+        const state = pc ? pc.connectionState : 'ожидание';
+        const row = document.createElement('div');
+        row.className = 'peer' + (state === 'connected' ? ' connected' : '');
+        row.innerHTML = `<span>${peerNames[id] || id}</span><span class="st">${state}</span>`;
+        peersBox.appendChild(row);
+    });
+}
+
+/* ---------- VU-метр ---------- */
+let audioCtxVu = null, analyser = null, vuRaf = null;
+
+function startVuMeter() {
+    try {
+        audioCtxVu = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtxVu.createMediaStreamSource(localStream);
+        analyser = audioCtxVu.createAnalyser();
+        analyser.fftSize = 512;
+        src.connect(analyser);
+
+        const data = new Uint8Array(analyser.fftSize);
+        const loop = () => {
+            analyser.getByteTimeDomainData(data);
+            let peak = 0;
+            for (let i = 0; i < data.length; i++) {
+                const v = Math.abs(data[i] - 128);
+                if (v > peak) peak = v;
+            }
+            vuBar.style.width = (muted ? 0 : Math.min(100, peak / 40 * 100)) + '%';
+            vuRaf = requestAnimationFrame(loop);
+        };
+        loop();
+    } catch (e) { vlog('vu', e); }
+}
+
+function stopVuMeter() {
+    if (vuRaf) { cancelAnimationFrame(vuRaf); vuRaf = null; }
+    if (audioCtxVu) { try { audioCtxVu.close(); } catch (e) {} audioCtxVu = null; }
+    vuBar.style.width = '0%';
+}
+
+window.addEventListener('beforeunload', () => { if (voiceOn) leaveVoice(); });
+
+renderPeers();
+</script>
+<script src="/cursors.js"></script>
+<script>
+    connectCursors(0);   // 0 = без изоляции, для общей тестовой страницы
+</script>
+</body>
+</html>
