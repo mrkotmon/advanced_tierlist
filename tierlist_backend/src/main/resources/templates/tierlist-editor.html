@@ -11,6 +11,9 @@
 </head>
 
 <body>
+<div id="pageData"
+     th:attr="data-tierlist-id=${tierlistId},data-is-owner=${isOwner}"
+     style="display:none"></div>
 <h1 th:text="${tierlistName}">Редактор</h1>
 
 <div>
@@ -66,11 +69,84 @@
         border-radius: 5px; white-space: nowrap;
     }
 </style>
-
+<div id="joinModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.4);
+     z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:#fff; padding:24px; border-radius:10px; max-width:400px;">
+        <h3 id="joinText">Запрос на присоединение</h3>
+        <div style="display:flex; gap:10px; margin-top:20px; justify-content:flex-end;">
+            <button id="joinReject" style="padding:8px 16px; cursor:pointer;">Отклонить</button>
+            <button id="joinAccept" style="padding:8px 16px; background:#2f80ed;
+                    color:#fff; border:0; border-radius:6px; cursor:pointer;">Принять</button>
+        </div>
+    </div>
+</div>
 <script src="/cursors.js"></script>
-<script th:inline="javascript">
-    const tierlistId = /*[[${tierlistId}]]*/ 0;
-    connectCursors(tierlistId);
+<script>
+    const pageData = document.getElementById('pageData');
+    const TIERLIST_ID = parseInt(pageData.dataset.tierlistId || '0', 10);
+    const IS_OWNER    = pageData.dataset.isOwner === 'true';
+
+    console.log('TIERLIST_ID =', TIERLIST_ID, 'IS_OWNER =', IS_OWNER);
+
+    connectCursors(TIERLIST_ID);
+
+    async function beat() {
+        try {
+            const r = await fetch('/api/heartbeat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tierlistId: TIERLIST_ID})
+            });
+            const j = await r.json();
+            console.log('[beat] tid=', TIERLIST_ID, '→', j);
+        } catch (e) {
+            console.error('[beat] error', e);
+        }
+    }
+    beat();
+    setInterval(beat, 5000);
+
+    window.addEventListener('beforeunload', () => {
+        try {
+            navigator.sendBeacon('/api/leave');
+            if (IS_OWNER) navigator.sendBeacon(`/api/collab/close/${TIERLIST_ID}`);
+        } catch (e) {}
+    });
+
+    let pendingReq = null;
+    const joinModal = document.getElementById('joinModal');
+    const joinText = document.getElementById('joinText');
+
+    if (IS_OWNER) {
+        let lastShown = null;
+        setInterval(async () => {
+            try {
+                const r = await fetch('/api/collab/pending');
+                if (!r.ok) return;
+                const list = await r.json();
+                if (!list.length) return;
+                const req = list[0];
+                if (lastShown === req.id) return;
+                lastShown = req.id;
+                pendingReq = req;
+                joinText.textContent = req.fromUsername + ' просит присоединиться к «' + req.tierlistName + '». Пустить?';
+                joinModal.style.display = 'flex';
+            } catch (e) {}
+        }, 3000);
+    }
+
+    document.getElementById('joinAccept').onclick = async () => {
+        if (!pendingReq) return;
+        joinModal.style.display = 'none';
+        await fetch('/api/collab/accept?requestId=' + pendingReq.id, {method:'POST'});
+        pendingReq = null;
+    };
+    document.getElementById('joinReject').onclick = async () => {
+        if (!pendingReq) return;
+        joinModal.style.display = 'none';
+        await fetch('/api/collab/reject?requestId=' + pendingReq.id, {method:'POST'});
+        pendingReq = null;
+    };
 </script>
 </body>
 </html>

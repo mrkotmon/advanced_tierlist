@@ -80,6 +80,7 @@
 <body>
 <div class="header">
     <h1>Tierlist</h1>
+    <a href="/profile" class="logout-btn" style="margin-right:8px;">Профиль</a>
     <a href="/logout" class="logout-btn">Выйти</a>
 </div>
 
@@ -93,5 +94,9 @@
     </div>
 </div>
 <a href="/pools" class="action-button">Управление пулами</a>
+<script>
+    fetch('/api/ping', {method:'POST'}).catch(()=>{});
+    setInterval(() => fetch('/api/ping', {method:'POST'}).catch(()=>{}), 60000);
+</script>
 </body>
 </html>

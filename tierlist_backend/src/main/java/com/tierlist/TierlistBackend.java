@@ -10,7 +10,6 @@ public class TierlistBackend {
         SpringApplication.run(TierlistBackend.class, args);
         System.out.println("http://localhost:8080/");
         System.out.println("http://localhost:8080/test");
-        // Открыть браузер только на Windows и только если это НЕ Docker
         if (System.getProperty("os.name").toLowerCase().contains("win")
                 && System.getenv("DOCKER_CONTAINER") == null) {
             try {

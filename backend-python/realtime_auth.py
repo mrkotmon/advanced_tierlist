@@ -1,6 +1,10 @@
 import secrets, time
 from typing import Dict
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
+
+from config import settings
 from deps import get_current_user, CurrentUser, decode_jwt
 
 router = APIRouter()
@@ -30,4 +34,25 @@ def ws_resolve_user(ticket: str | None, token: str | None) -> CurrentUser | None
         return consume_ticket(ticket)
     if token:
         return decode_jwt(token)
+    return None
+
+async def resolve_user_from_cookie(cookies: dict) -> "CurrentUser | None":
+    jsessionid = cookies.get("JSESSIONID")
+    if not jsessionid:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(
+                f"{settings.java_api}/api/me",
+                cookies={"JSESSIONID": jsessionid},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("authenticated"):
+                    return CurrentUser(
+                        user_id=int(data["userId"]),
+                        username=data["username"],
+                    )
+    except Exception as e:
+        print(f"[AUTH] {e}")
     return None

@@ -1,5 +1,6 @@
 package com.tierlist.controller;
 
+import com.tierlist.service.CollabService;
 import com.tierlist.service.PoolService;
 import jakarta.servlet.http.HttpSession;
 import org.json.JSONArray;
@@ -24,9 +25,16 @@ public class TierListController {
     @Autowired
     private PoolService poolService;
 
+    @Autowired
+    private CollabService collabService;
+
+    // ─────────────────────────────────────────────────────────────
+    // Создание
+    // ─────────────────────────────────────────────────────────────
+
     @GetMapping("/new")
     public String newTierListForm(HttpSession session, Model model) {
-        if (session.getAttribute("username") == null) return "redirect:/login"; //ну тип пока проверяем на лог ин, потом уберу
+        if (session.getAttribute("username") == null) return "redirect:/login";
         model.addAttribute("pools", poolService.getAllPools());
         return "new-tierlist";
     }
@@ -35,7 +43,11 @@ public class TierListController {
     public String createTierList(@RequestParam String name,
                                  @RequestParam(required = false) List<String> poolNames,
                                  HttpSession session) {
-        if (session.getAttribute("username") == null) return "redirect:/login";
+        String username = (String) session.getAttribute("username");
+        if (username == null) return "redirect:/login";
+
+        Long ownerId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Long.class, username);
 
         Map<String, Object> data = new HashMap<>();
         data.put("pools", poolNames != null ? poolNames : new ArrayList<>());
@@ -44,16 +56,49 @@ public class TierListController {
         data.put("tierColors", new HashMap<>());
 
         String json = new JSONObject(data).toString();
-        jdbcTemplate.update("INSERT INTO tierlists (name, tierlist_data) VALUES (?, ?::jsonb)", name, json);
+        jdbcTemplate.update(
+                "INSERT INTO tierlists (name, tierlist_data, owner_id) VALUES (?, ?::jsonb, ?)",
+                name, json, ownerId);
 
         Long id = jdbcTemplate.queryForObject(
                 "SELECT currval(pg_get_serial_sequence('tierlists','id'))", Long.class);
         return "redirect:/tierlist/" + id;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Список (свои + куда дали доступ)
+    // ─────────────────────────────────────────────────────────────
+
+    @GetMapping("/list")
+    public String listTierLists(HttpSession session, Model model) {
+        String username = (String) session.getAttribute("username");
+        if (username == null) return "redirect:/login";
+
+        Long ownerId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Long.class, username);
+
+        List<Map<String, Object>> tierlists = jdbcTemplate.queryForList(
+                "SELECT t.id, t.name, " +
+                        "       (t.owner_id = ?) AS is_owner " +
+                        "FROM tierlists t " +
+                        "WHERE t.owner_id = ? " +
+                        "   OR t.id IN (SELECT tierlist_id FROM collab_sessions WHERE user_id = ?) " +
+                        "ORDER BY t.id",
+                ownerId, ownerId, ownerId);
+
+        model.addAttribute("tierlists", tierlists);
+        return "tierlist-list";
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Просмотр
+    // ─────────────────────────────────────────────────────────────
+
     @GetMapping("/{id}")
     public String viewTierList(@PathVariable Long id, HttpSession session, Model model) {
-        if (session.getAttribute("username") == null) return "redirect:/login";
+        String username = (String) session.getAttribute("username");
+        if (username == null) return "redirect:/login";
+        if (!canAccess(id, username)) return "redirect:/tierlist/list";
 
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT * FROM tierlists WHERE id = ?", id);
@@ -61,7 +106,6 @@ public class TierListController {
         String dataJson = (dataObj != null) ? dataObj.toString() : "{}";
         JSONObject data = new JSONObject(dataJson);
 
-        // Извлекаем pools как список строк
         JSONArray poolsArr = data.optJSONArray("pools");
         List<String> poolNames = new ArrayList<>();
         if (poolsArr != null) {
@@ -70,14 +114,25 @@ public class TierListController {
             }
         }
 
+        Long myId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Long.class, username);
+        Long ownerId = ((Number) tierlist.get("owner_id")).longValue();
+
         model.addAttribute("tierlist", tierlist);
         model.addAttribute("poolNames", poolNames);
+        model.addAttribute("isOwner", myId.equals(ownerId));
         return "tierlist-detail";
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Редактор
+    // ─────────────────────────────────────────────────────────────
+
     @GetMapping("/{id}/edit")
     public String editTierList(@PathVariable Long id, HttpSession session, Model model) {
-        if (session.getAttribute("username") == null) return "redirect:/login";
+        String username = (String) session.getAttribute("username");
+        if (username == null) return "redirect:/login";
+        if (!canAccess(id, username)) return "redirect:/tierlist/list";
 
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT * FROM tierlists WHERE id = ?", id);
@@ -96,10 +151,10 @@ public class TierListController {
 
         List<Map<String, Object>> allObjects = new ArrayList<>();
         for (String poolName : poolNamesList) {
-            Long poolId = jdbcTemplate.queryForObject(
+            List<Long> ids = jdbcTemplate.queryForList(
                     "SELECT id FROM pools WHERE name = ?", Long.class, poolName);
-            if (poolId != null) {
-                allObjects.addAll(poolService.getObjectsByPoolId(poolId));
+            if (!ids.isEmpty()) {
+                allObjects.addAll(poolService.getObjectsByPoolId(ids.get(0)));
             }
         }
 
@@ -112,9 +167,8 @@ public class TierListController {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject ref = arr.getJSONObject(i);
                     long objId = ref.getLong("objectId");
-                    // Найдём объект по ID среди allObjects
                     allObjects.stream()
-                            .filter(o -> o.get("id").equals(objId))
+                            .filter(o -> ((Number) o.get("id")).longValue() == objId)
                             .findFirst()
                             .ifPresent(objList::add);
                 }
@@ -139,12 +193,21 @@ public class TierListController {
         for (Map<String, Object> obj : allObjects) {
             Object attrsObj = obj.get("attributes");
             if (attrsObj != null) {
-                String attrsStr = attrsObj.toString();    // PGobject.toString() → JSON string
-                JSONObject attrs = new JSONObject(attrsStr);
+                JSONObject attrs = new JSONObject(attrsObj.toString());
                 attrs.keySet().forEach(availableAttributes::add);
             }
         }
         String displayAttribute = data.optString("displayAttribute", null);
+
+        Long myId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Long.class, username);
+        Long ownerId = ((Number) tierlist.get("owner_id")).longValue();
+        boolean isOwner = myId.equals(ownerId);
+
+        // Владелец зашёл в редактор → открываем сессию
+        if (isOwner) {
+            collabService.openSession(id, ownerId);
+        }
 
         model.addAttribute("tierlistId", id);
         model.addAttribute("tierlistName", tierlist.get("name"));
@@ -153,14 +216,23 @@ public class TierListController {
         model.addAttribute("availableAttributes", availableAttributes);
         model.addAttribute("displayAttribute", displayAttribute);
         model.addAttribute("tierColors", data.optJSONObject("tierColors"));
+        model.addAttribute("isOwner", isOwner);
 
         return "tierlist-editor";
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Настройки отображения и тиры (AJAX)
+    // ─────────────────────────────────────────────────────────────
+
     @PostMapping("/{id}/display-attribute")
     @ResponseBody
     public ResponseEntity<?> updateDisplayAttribute(@PathVariable Long id,
-                                                    @RequestParam String attribute) {
+                                                    @RequestParam String attribute,
+                                                    HttpSession session) {
+        if (!canAccess(id, (String) session.getAttribute("username")))
+            return ResponseEntity.status(403).build();
+
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT tierlist_data FROM tierlists WHERE id = ?", id);
         Object dataObj = tierlist.get("tierlist_data");
@@ -174,8 +246,12 @@ public class TierListController {
 
     @PostMapping("/{id}/tiers/add")
     @ResponseBody
-    public ResponseEntity<?> addTier(@PathVariable Long id, @RequestParam String tierName) {
-        // Получаем текущий tierlist_data
+    public ResponseEntity<?> addTier(@PathVariable Long id,
+                                     @RequestParam String tierName,
+                                     HttpSession session) {
+        if (!canAccess(id, (String) session.getAttribute("username")))
+            return ResponseEntity.status(403).build();
+
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT tierlist_data FROM tierlists WHERE id = ?", id);
         Object dataObj = tierlist.get("tierlist_data");
@@ -187,11 +263,9 @@ public class TierListController {
             tiers = new JSONObject();
             data.put("tiers", tiers);
         }
-
         if (tiers.has(tierName)) {
             return ResponseEntity.badRequest().body("Тир с таким именем уже существует");
         }
-
         tiers.put(tierName, new JSONArray());
         jdbcTemplate.update("UPDATE tierlists SET tierlist_data = ?::jsonb WHERE id = ?",
                 data.toString(), id);
@@ -200,7 +274,12 @@ public class TierListController {
 
     @PostMapping("/{id}/tiers/remove")
     @ResponseBody
-    public ResponseEntity<?> removeTier(@PathVariable Long id, @RequestParam String tierName) {
+    public ResponseEntity<?> removeTier(@PathVariable Long id,
+                                        @RequestParam String tierName,
+                                        HttpSession session) {
+        if (!canAccess(id, (String) session.getAttribute("username")))
+            return ResponseEntity.status(403).build();
+
         Map<String, Object> tierlist = jdbcTemplate.queryForMap(
                 "SELECT tierlist_data FROM tierlists WHERE id = ?", id);
         Object dataObj = tierlist.get("tierlist_data");
@@ -217,11 +296,36 @@ public class TierListController {
         return ResponseEntity.notFound().build();
     }
 
-    @GetMapping("/list")
-    public String listTierLists(HttpSession session, Model model) {
-        if (session.getAttribute("username") == null) return "redirect:/login";
-        List<Map<String, Object>> tierlists = jdbcTemplate.queryForList("SELECT id, name FROM tierlists ORDER BY id");
-        model.addAttribute("tierlists", tierlists);
-        return "tierlist-list";
+    // ─────────────────────────────────────────────────────────────
+    // Проверка доступа
+    // ─────────────────────────────────────────────────────────────
+
+    private boolean canAccess(Long tierlistId, String username) {
+        if (username == null) {
+            System.out.println("[ACCESS] tid=" + tierlistId + " user=null → false");
+            return false;
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT t.owner_id, u.id AS my_id " +
+                        "FROM tierlists t, users u " +
+                        "WHERE t.id = ? AND u.username = ?",
+                tierlistId, username);
+        if (rows.isEmpty()) {
+            System.out.println("[ACCESS] tid=" + tierlistId + " user=" + username
+                    + " → тирлист или пользователь не найден");
+            return false;
+        }
+        Long ownerId = ((Number) rows.get(0).get("owner_id")).longValue();
+        Long myId    = ((Number) rows.get(0).get("my_id")).longValue();
+
+        if (ownerId.equals(myId)) {
+            System.out.println("[ACCESS] tid=" + tierlistId + " user=" + username
+                    + " myId=" + myId + " owner=" + ownerId + " → OWNER true");
+            return true;
+        }
+        boolean has = collabService.hasAccess(tierlistId, myId);
+        System.out.println("[ACCESS] tid=" + tierlistId + " user=" + username
+                + " myId=" + myId + " owner=" + ownerId + " hasAccess=" + has);
+        return has;
     }
 }

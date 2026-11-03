@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><title>Профиль</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #F5F7F9; margin: 0; padding: 24px; }
+        .card { background: #fff; border: 1px solid #e3e8ed; border-radius: 10px;
+                padding: 20px; max-width: 760px; margin-bottom: 20px; }
+        input { padding: 8px 10px; border: 1px solid #c9d2dd; border-radius: 6px; margin-right: 8px; }
+        button { padding: 8px 14px; border-radius: 6px; border: 0; background: #2f80ed;
+                 color: #fff; cursor: pointer; }
+        button.ghost { background: #e6ecf4; color: #333; }
+        .msg { padding: 10px; margin-bottom: 12px; border-radius: 6px; }
+        .msg.ok { background: #e3f5e9; color: #1e7a3c; }
+        .msg.err { background: #fdeaea; color: #b83131; }
+        .friends { list-style: none; padding: 0; margin: 0; }
+        .friends li { padding: 10px; border-bottom: 1px solid #eee;
+                      display: flex; align-items: center; gap: 12px; }
+        .friends li.offline { color: #999; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+        .dot.on { background: #27ae60; }
+        .st { font-size: 12px; color: #888; margin-left: auto; }
+        .ctx { position: fixed; background: #fff; border: 1px solid #ccc; border-radius: 8px;
+               box-shadow: 0 4px 14px rgba(0,0,0,.15); padding: 4px 0; z-index: 1000; display: none; }
+        .ctx div { padding: 8px 16px; cursor: pointer; }
+        .ctx div:hover { background: #f0f2f5; }
+    </style>
+</head>
+<body>
+<h1>Профиль <span th:text="${username}"></span></h1>
+<p><a href="/home">← На главную</a></p>
+
+<div class="msg ok" th:if="${message}" th:text="${message}"></div>
+<div class="msg err" th:if="${error}" th:text="${error}"></div>
+
+<div class="card">
+    <h3>Имя</h3>
+    <form method="post" action="/profile/rename">
+        <input name="newUsername" placeholder="Новое имя" required>
+        <button type="submit">Сменить</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Пароль</h3>
+    <form method="post" action="/profile/password">
+        <input type="password" name="oldPassword" placeholder="Текущий" required>
+        <input type="password" name="newPassword" placeholder="Новый" required>
+        <button type="submit">Обновить</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Добавить друга</h3>
+    <form method="post" action="/profile/add-friend">
+        <input name="friendUsername" placeholder="Имя пользователя" required>
+        <button type="submit">Отправить запрос</button>
+    </form>
+</div>
+
+<div class="card" th:if="${not #lists.isEmpty(incoming)}">
+    <h3>Входящие заявки</h3>
+    <div th:each="req : ${incoming}" style="padding:8px 0;border-bottom:1px solid #eee">
+        <span th:text="${req.username}"></span>
+        <form method="post" action="/profile/accept" style="display:inline">
+            <input type="hidden" name="requestId" th:value="${req.id}">
+            <button type="submit">Принять</button>
+        </form>
+        <form method="post" action="/profile/reject" style="display:inline">
+            <input type="hidden" name="requestId" th:value="${req.id}">
+            <button type="submit" class="ghost">Отклонить</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Друзья <small style="color:#999">(ПКМ по онлайн-другу → «Присоединиться»)</small></h3>
+    <div class="card">
+        <h3>Друзья <small style="color:#999">(ПКМ по другу в редакторе → «Присоединиться»)</small></h3>
+        <ul class="friends" id="friendsList">
+            <li style="color:#999">Загрузка...</li>
+        </ul>
+    </div>
+</div>
+
+<div class="ctx" id="ctx"><div id="ctxJoin">Присоединиться</div></div>
+
+<script>
+    // Heartbeat: пока страница открыта — ты онлайн
+    fetch('/api/ping', {method:'POST'}).catch(()=>{});
+
+    // ── Ждём accept ──
+    let waitingTimer = null;
+    function startWaitingForAccept() {
+        if (waitingTimer) return;
+        waitingTimer = setInterval(async () => {
+            try {
+                const r = await fetch('/api/collab/waiting');
+                if (!r.ok) return;
+                const j = await r.json();
+                if (j.tierlistId) {
+                    clearInterval(waitingTimer);
+                    waitingTimer = null;
+                    window.location.href = `/tierlist/${j.tierlistId}/edit`;
+                }
+            } catch (e) {}
+        }, 2000);
+    }
+
+    async function requestJoin(username, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = 'Отправка...'; }
+        try {
+            const r = await fetch(
+                `/api/collab/request?friendUsername=${encodeURIComponent(username)}`,
+                {method: 'POST'});
+            const text = await r.text();
+            let j;
+            try { j = JSON.parse(text); } catch { j = {ok:false, error: text.substring(0,200)}; }
+            if (!j.ok) {
+                alert('Не получилось: ' + (j.error || 'неизвестно'));
+                if (btn) { btn.disabled = false; btn.textContent = 'Присоединиться'; }
+                return;
+            }
+            if (btn) btn.textContent = 'Ждём ответа хоста...';
+            startWaitingForAccept();
+        } catch (e) {
+            alert('Ошибка сети: ' + e.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Присоединиться'; }
+        }
+    }
+
+    // ── Опрос списка друзей каждые 3 сек ──
+    let currentCtxUser = null;
+    const ctx = document.getElementById('ctx');
+
+    async function refreshFriends() {
+        try {
+            const r = await fetch('/api/friends');
+            if (!r.ok) return;
+            const list = await r.json();
+            const ul = document.getElementById('friendsList');
+            if (!list.length) {
+                ul.innerHTML = '<li style="color:#999">Пока никого</li>';
+                return;
+            }
+            ul.innerHTML = '';
+            for (const f of list) {
+                const li = document.createElement('li');
+                if (!f.online) li.classList.add('offline');
+
+                const dot = document.createElement('span');
+                dot.className = 'dot' + (f.online ? ' on' : '');
+
+                const name = document.createElement('span');
+                name.textContent = f.username;
+
+                const st = document.createElement('span');
+                st.className = 'st';
+                if (f.inTierlist) st.textContent = 'в «' + f.tierlistName + '»';
+                else if (f.online) st.textContent = 'в сети, не в редакторе';
+                else st.textContent = 'оффлайн';
+
+                li.appendChild(dot);
+                li.appendChild(name);
+                li.appendChild(st);
+
+                if (f.online && f.inTierlist) {
+                    const btn = document.createElement('button');
+                    btn.textContent = 'Присоединиться';
+                    btn.className = 'join-btn';
+                    btn.style.cssText = 'padding:5px 12px;font-size:12px;background:#2f80ed;color:#fff;border:0;border-radius:6px;cursor:pointer;margin-left:auto';
+                    btn.onclick = () => requestJoin(f.username, btn);
+                    li.appendChild(btn);
+
+                    li.addEventListener('contextmenu', e => {
+                        e.preventDefault();
+                        currentCtxUser = f.username;
+                        ctx.style.top = e.clientY + 'px';
+                        ctx.style.left = e.clientX + 'px';
+                        ctx.style.display = 'block';
+                    });
+                }
+
+                ul.appendChild(li);
+            }
+        } catch (e) {}
+    }
+
+    document.addEventListener('click', () => { ctx.style.display = 'none'; });
+    document.getElementById('ctxJoin').onclick = () => {
+        if (currentCtxUser) requestJoin(currentCtxUser, null);
+        ctx.style.display = 'none';
+    };
+
+    refreshFriends();
+    setInterval(refreshFriends, 3000);
+    fetch('/api/collab/waiting').then(r => r.json()).then(j => {
+        if (j.tierlistId) window.location.href = `/tierlist/${j.tierlistId}/edit`;
+    }).catch(()=>{});
+</script>
+</body>
+</html>

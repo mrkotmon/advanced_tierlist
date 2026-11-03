@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -26,6 +27,9 @@ public class AuthController {
 
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @GetMapping("/")
     public String index(HttpSession session) {
@@ -59,6 +63,15 @@ public class AuthController {
 
     @GetMapping("/logout")
     public String logout(HttpSession session) {
+        String username = (String) session.getAttribute("username");
+        if (username != null) {
+            jdbcTemplate.update(
+                    "DELETE FROM user_activity WHERE user_id = " +
+                            "(SELECT id FROM users WHERE username = ?)", username);
+            jdbcTemplate.update(
+                    "UPDATE users SET last_seen = NOW() - INTERVAL '1 hour' WHERE username = ?",
+                    username);
+        }
         session.invalidate();
         return "redirect:/login";
     }
@@ -90,7 +103,13 @@ public class AuthController {
         if (username == null) {
             return ResponseEntity.status(401).body(Map.of("error", "not authenticated"));
         }
-        return ResponseEntity.ok(Map.of("username", username, "authenticated", true));
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Long.class, username);
+        return ResponseEntity.ok(Map.of(
+                "username", username,
+                "userId", userId,
+                "authenticated", true
+        ));
     }
 
     @Value("${jwt.secret}")
