@@ -28,27 +28,26 @@
 ### Совместное редактирование
 - Курсоры других пользователей на том же тир-листе в реальном времени
 - Запрос на присоединение к чужому тир-листу с одобрением хоста
-- Голосовой чат через WebRTC + DeepFilterNet3 (шумоподавление)
 - Автоматическое закрытие сессии при выходе хоста
 
 ---
-
+```text
 ## 🏗️ Архитектура
 ┌──────────────────────────────────────────────────────┐
-│ Браузер (клиент) │
-│ Thymeleaf-страницы + WebSocket + WebRTC │
+│ Браузер (клиент)                                     │
+│ Thymeleaf-страницы + WebSocket + WebRTC              │
 └───────┬─────────────────────────────────┬────────────┘
-│ HTTP │ WebSocket
+│ HTTP  │ WebSocket
 ▼ ▼
-┌──────────────────┐ ┌──────────────────┐
-│ Caddy (443) │──── HTTPS ──►│ │
-│ reverse proxy │ │ │
+┌──────────────────┐              ┌──────────────────┐
+│ Caddy (443)      │──── HTTPS ──►│                  │
+│                                 │reverse proxy │ │ │
 └───────┬──────────┘ │ │
 ▼ ▼ │
-┌──────────────────┐ ┌──────────────────┐ │
+┌──────────────────┐ ┌──────────────────       │
 │ Java Backend │◄─────►│ Python Service │◄─────┘
-│ Spring Boot │ HTTP │ FastAPI │
-│ :8080 │ │ :8001 │
+│ Spring Boot │ HTTP │          FastAPI │
+│ :8080 │            |            :8001 │
 └────────┬─────────┘ └────────┬─────────┘
 └──────────┬───────────────┘
 ▼
@@ -56,7 +55,7 @@
 │ PostgreSQL │
 │ :5432 │
 └──────────────────┘
-
+```
 text
 
 - **Java (Spring Boot)** — бизнес-логика: тир-листы, пулы, объекты, аутентификация, друзья
@@ -73,12 +72,12 @@ text
 | Backend (Java) | Spring Boot 3.3, Spring Web, Spring Data JPA, JDBC Template, Thymeleaf, BCrypt |
 | Backend (Python) | FastAPI, Uvicorn, asyncpg, httpx, psycopg2 |
 | База данных | PostgreSQL 16 (JSONB для гибких структур) |
-| Frontend | Thymeleaf, SortableJS, WebRTC, DeepFilterNet3 |
+| Frontend | Thymeleaf, SortableJS|
 | Инфраструктура | Docker Compose, Caddy 2 |
 | Аутентификация | HttpSession + JSESSIONID cookie |
 
 ---
-
+```text
 advanced_tierlist/
 │
 ├── tierlist_backend/ # Java Spring Boot — основной бэкенд
@@ -165,7 +164,7 @@ advanced_tierlist/
 ├── .env # Секреты (не в git)
 ├── .gitignore
 └── README.md # Этот файл
-
+```
 text
 
 ---
